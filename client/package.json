@@ -1,0 +1,26 @@
+{
+  "name": "code-collab-client",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.48.0",
+    "nanoid": "^5.0.7",
+    "socket.io-client": "^4.7.5",
+    "y-monaco": "^0.1.5",
+    "y-websocket": "^2.0.3",
+    "yjs": "^13.6.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.3"
+  }
+}

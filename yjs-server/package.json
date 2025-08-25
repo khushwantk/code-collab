@@ -1,0 +1,14 @@
+{
+  "name": "yjs-websocket",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "HOST=localhost PORT=1234 y-websocket"
+  },
+  "dependencies": {
+    "@y/websocket-server": "^0.1.1",
+    "ws": "^8.18.0",
+    "y-websocket": "^2.0.3",
+    "yjs": "^13.6.18"
+  }
+}
