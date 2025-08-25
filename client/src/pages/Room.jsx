@@ -4,6 +4,9 @@ import Editor from "../components/Editor.jsx";
 import VideoGrid from "../components/VideoGrid.jsx";
 import Chat from "../components/Chat.jsx";
 import { connectRoom } from "../lib/socket.js";
+import { useScreenSharing } from "../lib/screenshare.js";
+import ScreenSharePanel from "../components/ScreenSharePanel.jsx";
+import FullScreenViewer from "../components/FullScreenViewer.jsx";
 import "../styles.css";
 
 export default function Room() {
@@ -12,6 +15,11 @@ export default function Room() {
   const [me, setMe] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [full, setFull] = useState(false);
+
+  const [fullScreenShare, setFullScreenShare] = useState(null);
+
+  const { startScreenShare, stopScreenShare, screenShares, myScreenStream } =
+    useScreenSharing(socket, me, participants);
 
   useEffect(() => {
     const s = connectRoom(code);
@@ -49,47 +57,69 @@ export default function Room() {
   if (!socket || !me) return <div style={{ padding: 16 }}>Connecting…</div>;
 
   return (
-    <div className="container container--editor-left">
-      {/* Left: Editor */}
-      <div className="card" style={{ minHeight: "70vh" }}>
-        <div style={{ padding: 8, borderBottom: "1px solid #222" }}>
-          <b>Room:</b> <code>{code}</code>
+    <>
+      <FullScreenViewer
+        share={fullScreenShare}
+        onClose={() => setFullScreenShare(null)}
+      />
+      <div className="container container--editor-left">
+        {/* Left: Editor */}
+        <div className="card" style={{ minHeight: "70vh" }}>
+          <div style={{ padding: 8, borderBottom: "1px solid #222" }}>
+            <b>Room:</b> <code>{code}</code>
+          </div>
+          <div style={{ height: "calc(100% - 40px)" }}>
+            <Editor docId={code} me={me} />
+          </div>
         </div>
-        <div style={{ height: "calc(100% - 40px)" }}>
-          <Editor docId={code} me={me} />
+
+        {/* Right: Participants + Video + Chat */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateRows: "auto auto 1fr auto",
+            gap: 12,
+          }}
+        >
+          <div className="card" style={{ padding: 8 }}>
+            <b>Participants</b>
+            <button
+              className="btn btn-small"
+              onClick={myScreenStream ? stopScreenShare : startScreenShare}
+              style={{ float: "right" }}
+            >
+              {myScreenStream ? "Stop Sharing" : "Share Screen"}
+            </button>
+            <ul style={{ margin: 8, paddingLeft: 18 }}>
+              {participants.map((p) => (
+                <li
+                  key={p.id}
+                  style={{
+                    color: p.id === me.id ? "limegreen" : "inherit",
+                    fontWeight: p.id === me.id ? "bold" : "normal",
+                  }}
+                >
+                  {p.name}
+                  {p.id === me.id ? " (you)" : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <ScreenSharePanel
+            shares={screenShares}
+            onSelect={setFullScreenShare}
+          />
+
+          <div className="card" style={{ padding: 8 }}>
+            <VideoGrid socket={socket} />
+          </div>
+
+          <div className="card" style={{ padding: 8 }}>
+            <Chat socket={socket} me={me} />
+          </div>
         </div>
       </div>
-
-      {/* Right: Participants + Video + Chat */}
-      <div
-        style={{ display: "grid", gridTemplateRows: "auto 1fr auto", gap: 12 }}
-      >
-        <div className="card" style={{ padding: 8 }}>
-          <b>Participants</b>
-          <ul style={{ margin: 8, paddingLeft: 18 }}>
-            {participants.map((p) => (
-              <li
-                key={p.id}
-                style={{
-                  color: p.id === me.id ? "limegreen" : "inherit",
-                  fontWeight: p.id === me.id ? "bold" : "normal",
-                }}
-              >
-                {p.name}
-                {p.id === me.id ? " (you)" : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="card" style={{ padding: 8 }}>
-          <VideoGrid socket={socket} />
-        </div>
-
-        <div className="card" style={{ padding: 8 }}>
-          <Chat socket={socket} me={me} />
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

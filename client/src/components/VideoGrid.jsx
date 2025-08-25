@@ -27,13 +27,13 @@ export default function VideoGrid({ socket }) {
         micTrackRef.current = s.getAudioTracks()[0] || null;
         camTrackRef.current = s.getVideoTracks()[0] || null;
 
-        // make sure they start enabled
-        s.getAudioTracks().forEach((t) => (t.enabled = true));
-        s.getVideoTracks().forEach((t) => (t.enabled = true));
+        // 🔇 start with MIC MUTED, camera on
+        s.getAudioTracks().forEach((t) => (t.enabled = false)); // mute mic by default
+        s.getVideoTracks().forEach((t) => (t.enabled = true)); // keep cam on
 
         setMeStream(s);
-        setMicOn(!!micTrackRef.current);
-        setCamOn(!!camTrackRef.current);
+        setMicOn(false); // reflect muted state
+        setCamOn(!!camTrackRef.current); // true if we have a video track
 
         // self preview
         if (meVideo.current) {
@@ -43,7 +43,11 @@ export default function VideoGrid({ socket }) {
           Promise.resolve(meVideo.current.play()).catch(() => {});
         }
 
-        socket.emit("media:state", { audio: true, video: true });
+        // broadcast initial media state
+        socket.emit("media:state", {
+          audio: false,
+          video: !!camTrackRef.current,
+        });
       } else {
         setMeStream(null);
         setMicOn(false);

@@ -1,20 +1,19 @@
-import { Outlet, Link } from "react-router-dom";
+// client/src/App.jsx
 import React from "react";
+import { Outlet } from "react-router-dom";
+import ThemeToggle from "./components/ThemeToggle.jsx";
+import "./styles.css";
 
 export default function App() {
   return (
-    <div className="app">
-      <header style={{ padding: 12, borderBottom: "1px solid #333" }}>
-        <Link
-          to="/"
-          style={{ color: "white", textDecoration: "none", fontWeight: 700 }}
-        >
-          code-collab
-        </Link>
+    <div>
+      <header className="app-header">
+        <div className="header-inner container-max">
+          <div className="brand">CodeCollab</div>
+          <ThemeToggle />
+        </div>
       </header>
-      <main style={{ padding: 12 }}>
-        <Outlet />
-      </main>
+      <Outlet />
     </div>
   );
 }

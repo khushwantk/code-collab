@@ -62,7 +62,7 @@ export function setupSignaling(io) {
     });
 
     // 7) Chat
-    socket.on("chat:message", (text) => {
+    socket.on("chat:send", (text) => {
       io.to(room).emit("chat:message", { from: user, text, ts: Date.now() });
     });
 
@@ -71,15 +71,63 @@ export function setupSignaling(io) {
       socket.emit("roster", getUsersInRoom(io, room));
     });
 
-    socket.on("screen:state", ({ on }) => {
-      io.to(room).emit("screen:state", { from: socket.id, on: !!on });
+    // ------------------------------------------------------------------
+    // --- NEW: Screen Sharing Signaling ---
+    // ------------------------------------------------------------------
+
+    // Announce that a user has started sharing their screen
+    socket.on("screenshare:start", () => {
+      console.log(
+        `${user.name} (${user.id}) started screen sharing in ${room}`
+      );
+      // Announce to everyone else in the room
+      socket.to(room).except(socket.id).emit("screenshare:start", {
+        from: user.id,
+        name: user.name,
+      });
+    });
+
+    // Announce that a user has stopped sharing
+    socket.on("screenshare:stop", () => {
+      console.log(
+        `${user.name} (${user.id}) stopped screen sharing in ${room}`
+      );
+      socket.to(room).except(socket.id).emit("screenshare:stop", {
+        from: user.id,
+      });
+    });
+
+    // Relay the WebRTC offer to a specific user
+    socket.on("screenshare:offer", ({ to, offer }) => {
+      io.to(to).emit("screenshare:offer", {
+        from: user.id,
+        name: user.name,
+        offer,
+      });
+    });
+
+    // Relay the WebRTC answer back to the sharer
+    socket.on("screenshare:answer", ({ to, answer }) => {
+      io.to(to).emit("screenshare:answer", {
+        from: user.id,
+        answer,
+      });
+    });
+
+    // Relay ICE candidates between the two peers
+    socket.on("screenshare:ice-candidate", ({ to, candidate }) => {
+      io.to(to).emit("screenshare:ice-candidate", {
+        from: user.id,
+        candidate,
+      });
     });
 
     // 9) Cleanup
     socket.on("disconnect", async () => {
       io.to(room).emit("presence:leave", user);
+      // NEW: Also announce that the disconnected user stopped their screen share
+      io.to(room).emit("screenshare:stop", { from: user.id });
       broadcastRoster(io, room);
-      // keep DB count in sync if you use it
       await leave(room).catch(() => {});
     });
   });
