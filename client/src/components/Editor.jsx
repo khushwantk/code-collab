@@ -14,6 +14,7 @@ const USER_COLORS = [
 ];
 const getRandomColor = () =>
   USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+
 const LANGUAGES = [
   { id: "javascript", label: "JavaScript" },
   { id: "typescript", label: "TypeScript" },
@@ -31,11 +32,12 @@ export default function Editor({ docId, me }) {
   const editorRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
+  const userColorRef = useRef(getRandomColor());
 
   const [language, setLanguage] = useState("javascript");
   const [theme, setTheme] = useState("vs-dark");
-
   const isDark = theme === "vs-dark";
+
   const toolbarStyle = useMemo(
     () => ({
       display: "flex",
@@ -47,6 +49,7 @@ export default function Editor({ docId, me }) {
     }),
     [isDark]
   );
+
   const buttonStyle = useMemo(
     () => ({
       padding: "8px 12px",
@@ -59,6 +62,7 @@ export default function Editor({ docId, me }) {
     }),
     [isDark]
   );
+
   const selectStyle = useMemo(
     () => ({
       padding: "6px 10px",
@@ -69,13 +73,59 @@ export default function Editor({ docId, me }) {
     }),
     [isDark]
   );
+
+  // ---- helpers ----
   const setAwareness = (patch) => {
     const aw = providerRef.current?.awareness;
     if (!aw) return;
-    const currentToolbarState = aw.getLocalState()?.toolbar || {};
-    aw.setLocalStateField("toolbar", { ...currentToolbarState, ...patch });
+    const cur = aw.getLocalState()?.toolbar || {};
+    aw.setLocalStateField("toolbar", { ...cur, ...patch });
   };
 
+  const setUserInAwareness = (name) => {
+    const aw = providerRef.current?.awareness;
+    if (!aw) return;
+    const prev = aw.getLocalState() || {};
+    aw.setLocalState({
+      ...prev,
+      user: {
+        color: prev.user?.color || userColorRef.current,
+        colorLight: "#FFFFFF",
+        name: name || prev.user?.name || "Guest",
+      },
+    });
+  };
+
+  const applyRemoteLabels = () => {
+    const aw = providerRef.current?.awareness;
+    const root = containerRef.current;
+    if (!aw || !root) return;
+
+    for (const [clientId, state] of aw.getStates()) {
+      const name = state?.user?.name || "Guest";
+      const color = state?.user?.color || "#888";
+
+      root
+        .querySelectorAll(`.yRemoteSelectionHead-${clientId}`)
+        .forEach((el) => {
+          el.setAttribute("data-name", name);
+          if (!el.style.borderLeftColor) el.style.borderLeftColor = color;
+        });
+
+      root.querySelectorAll(`.yRemoteSelection-${clientId}`).forEach((el) => {
+        if (!el.style.backgroundColor) el.style.backgroundColor = `${color}40`;
+      });
+    }
+  };
+
+  // reflect me->awareness whenever me changes
+  useEffect(() => {
+    if (!providerRef.current) return;
+    setUserInAwareness(me?.name);
+    applyRemoteLabels();
+  }, [me]);
+
+  // main setup
   useEffect(() => {
     const ydoc = new Y.Doc();
     const wsUrl =
@@ -84,22 +134,30 @@ export default function Editor({ docId, me }) {
     providerRef.current = provider;
 
     const ytext = ydoc.getText("monaco");
-    const meta = ydoc.getMap("meta"); // We will use this for language sync
+    const meta = ydoc.getMap("meta");
 
-    // ... (doSeedOnce function and its logic is the same)
-    function doSeedOnce() {
+    // one-time seeding (post-sync), guarded with shared flag
+    const doSeedOnce = () => {
       ydoc.transact(() => {
         const alreadySeeded = meta.get("seeded") === true;
         const isEmpty = ytext.toString().length === 0;
         if (!alreadySeeded && isEmpty) {
           ytext.insert(
             0,
-            `\n  // Welcome to CodeCollab!\n  // This is a collaborative editor.\n  // Start typing below...\n\n  function hello() {\n    console.log("Hello world!");\n  }\n\n  hello();`
+            `// Welcome to CodeCollab!
+  // This is a collaborative editor.
+  // Start typing below...
+
+  function hello() {
+    console.log("Hello world!");
+  }
+
+  hello();`
           );
           meta.set("seeded", true);
         }
       });
-    }
+    };
 
     if (typeof provider.whenSynced?.then === "function") {
       provider.whenSynced.then(doSeedOnce);
@@ -117,7 +175,6 @@ export default function Editor({ docId, me }) {
     }
 
     const editor = monaco.editor.create(containerRef.current, {
-      // ... (editor options are the same)
       value: "",
       language,
       theme,
@@ -146,73 +203,52 @@ export default function Editor({ docId, me }) {
     );
     bindingRef.current = binding;
 
-    if (me) {
-      const userColor = getRandomColor();
-      provider.awareness.setLocalStateField("user", {
-        name: me.name,
-        color: userColor,
-        colorLight: "#FFFFFF",
-      });
-      console.log(
-        "✅ My Local Awareness State Set:",
-        provider.awareness.getLocalState()
-      );
-    }
+    // set local user (works even if me is undefined; later effect updates name)
+    setUserInAwareness(me?.name);
+    // initial labels
+    applyRemoteLabels();
 
-    provider.awareness.on("update", () => {
-      // getStates() returns a Map of all users' awareness states
-      const states = provider.awareness.getStates();
-      console.log("📡 Awareness update received. All states:", states);
-    });
+    // relay labels on awareness updates
+    provider.awareness.on("update", applyRemoteLabels);
 
-    // Set initial toolbar state for others (non-conflicting)
+    // initial toolbar state (non-conflicting)
     setAwareness({ language, theme });
 
-    // Sync language using the Y.Map
+    // language sync via meta map
     const onMetaChange = (event) => {
       if (event.keysChanged.has("language")) {
         const newLang = meta.get("language");
-        if (newLang && newLang !== language) {
-          setLanguage(newLang);
-        }
+        if (newLang && newLang !== language) setLanguage(newLang);
       }
     };
-
-    // Set initial language from shared state if it exists
     const initialLang = meta.get("language");
-    if (initialLang) {
-      setLanguage(initialLang);
-    }
-
+    if (initialLang) setLanguage(initialLang);
     meta.observe(onMetaChange);
 
     return () => {
+      provider.awareness.off?.("update", applyRemoteLabels);
       meta.unobserve(onMetaChange);
-
       binding.destroy();
       editor.dispose();
       provider.destroy();
       ydoc.destroy();
     };
-  }, [docId, me]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]);
 
-  // When local language changes, apply + BROADCAST to Y.Map
+  // language change -> apply + broadcast
   useEffect(() => {
     const ed = editorRef.current;
     if (!ed) return;
     monaco.editor.setModelLanguage(ed.getModel(), language);
 
-    // Write the new language to the shared map
     const meta = providerRef.current?.doc.getMap("meta");
-    if (meta) {
-      meta.set("language", language);
-    }
+    if (meta) meta.set("language", language);
 
-    // Still update awareness for non-critical UI hints
     setAwareness({ language });
   }, [language]);
 
-  // When local theme changes, apply + broadcast
+  // theme change -> apply + broadcast (editor-local theme)
   useEffect(() => {
     monaco.editor.setTheme(theme);
     setAwareness({ theme });
@@ -247,7 +283,9 @@ export default function Editor({ docId, me }) {
             </option>
           ))}
         </select>
+
         <div style={{ marginLeft: "auto" }} />
+
         <button
           onClick={() => setTheme(isDark ? "vs" : "vs-dark")}
           style={buttonStyle}
@@ -255,6 +293,7 @@ export default function Editor({ docId, me }) {
         >
           {isDark ? "Light theme" : "Dark theme"}
         </button>
+
         <button
           onClick={downloadCode}
           style={buttonStyle}
@@ -263,12 +302,12 @@ export default function Editor({ docId, me }) {
           Download
         </button>
       </div>
+
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }
 
-// ... (extFor function is the same)
 function extFor(lang) {
   switch (lang) {
     case "javascript":
