@@ -29,7 +29,7 @@ export default function Room() {
       if (err?.message === "room_full") setFull(true);
     });
 
-    // NEW: handle our custom event from the server rooms flow
+    // handle our custom event from the server rooms flow
     s.on("room_full", () => setFull(true));
 
     s.on("me", (u) => {
@@ -40,7 +40,7 @@ export default function Room() {
       s.emit("peers:list");
     });
 
-    // 🔄 authoritative list from server
+    // authoritative list from server
     s.on("roster", (users) => setParticipants(users));
 
     // When someone joins/leaves, optionally re-ask for roster
@@ -112,7 +112,7 @@ export default function Room() {
           />
 
           <div className="card" style={{ padding: 8 }}>
-            <VideoGrid socket={socket} />
+            <VideoGrid socket={socket} me={me} participants={participants} />
           </div>
 
           <div className="card" style={{ padding: 8 }}>

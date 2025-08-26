@@ -10,8 +10,16 @@ export async function createMediaStream(
   }
 }
 
+// STUN servers help browsers find a connection path.
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
+
 export function createPeer(isInitiator, onSignal, onStream) {
-  const pc = new RTCPeerConnection();
+  const pc = new RTCPeerConnection(ICE_SERVERS);
 
   pc.onicecandidate = (e) =>
     e.candidate && onSignal({ candidate: e.candidate });

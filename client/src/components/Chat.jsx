@@ -1,243 +1,12 @@
-// import { useEffect, useRef, useState } from "react";
-
-// export default function Chat({ socket, me }) {
-//   const [msgs, setMsgs] = useState([]); // [{cid,id,name,text,ts}]
-//   const [text, setText] = useState("");
-//   const listRef = useRef(null);
-//   const inputRef = useRef(null);
-
-//   // Accept multiple event names to be resilient
-//   const INBOUND_EVENTS = ["chat:message", "chat:send", "message"];
-//   const HISTORY_EVENTS = ["chat:history", "message:history"];
-
-//   const mkCid = () =>
-//     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-//   // ---- Normalize any payload shape & force text => string ----
-//   function normalizeMessage(m) {
-//     if (m == null) return null;
-
-//     if (typeof m === "string") {
-//       return {
-//         id: null,
-//         name: "Someone",
-//         text: m,
-//         ts: Date.now(),
-//         cid: mkCid(),
-//       };
-//     }
-
-//     // Some servers wrap { from:{id,name}, text } etc.
-//     const id = m.id ?? m.from?.id ?? m.senderId ?? null;
-//     const name = m.name ?? m.from?.name ?? m.fromName ?? "Someone";
-//     let text = m.text.text ?? m.message ?? "";
-//     if (typeof text !== "string") {
-//       try {
-//         text = JSON.stringify(text);
-//       } catch {
-//         text = String(text);
-//       }
-//     }
-//     const ts = m.ts ?? m.time ?? Date.now();
-//     const cid = m.cid ?? `${id ?? "x"}-${ts}`;
-
-//     // console.log(m.text.text);
-
-//     return { id, name, text, ts, cid };
-//   }
-
-//   // auto‑scroll
-//   useEffect(() => {
-//     const el = listRef.current;
-//     if (el) el.scrollTop = el.scrollHeight + 1;
-//   }, [msgs]);
-
-//   // socket listeners
-//   useEffect(() => {
-//     if (!socket) return;
-
-//     const onAnyMessage = (m) => {
-//       const n = normalizeMessage(m);
-//       if (!n) return;
-//       setMsgs((prev) =>
-//         prev.some((x) => x.cid === n.cid) ? prev : [...prev, n]
-//       );
-//     };
-
-//     const onHistory = (items = []) => {
-//       const list = items
-//         .map(normalizeMessage)
-//         .filter(Boolean)
-//         .sort((a, b) => a.ts - b.ts);
-//       setMsgs(list);
-//     };
-
-//     INBOUND_EVENTS.forEach((ev) => socket.on(ev, onAnyMessage));
-//     HISTORY_EVENTS.forEach((ev) => socket.on(ev, onHistory));
-
-//     return () => {
-//       INBOUND_EVENTS.forEach((ev) => socket.off(ev, onAnyMessage));
-//       HISTORY_EVENTS.forEach((ev) => socket.off(ev, onHistory));
-//     };
-//   }, [socket]);
-
-//   function send() {
-//     const t = text.trim();
-//     if (!t) return;
-
-//     const payload = {
-//       id: socket?.id ?? null,
-//       name: me?.name || "You",
-//       text: t,
-//       ts: Date.now(),
-//       cid: mkCid(),
-//     };
-
-//     // optimistic append (de‑dup when echoed)
-//     // setMsgs((prev) => [...prev, payload]);
-
-//     // emit on both common channels to match your server
-//     try {
-//       socket.emit("chat:send", payload);
-//     } catch {}
-//     try {
-//       socket.emit("chat:message", payload);
-//     } catch {}
-
-//     setText("");
-//     inputRef.current?.focus();
-//   }
-
-//   function onKeyDown(e) {
-//     if (e.key === "Enter" && !e.shiftKey) {
-//       e.preventDefault();
-//       send();
-//     }
-//   }
-
-//   const myId = socket?.id;
-
-//   return (
-//     <div className="chat">
-//       <div
-//         ref={listRef}
-//         className="card"
-//         style={{
-//           overflowY: "auto",
-//           height: 220,
-//           padding: 10,
-//           borderRadius: 12,
-//           background: "var(--bg-elev)",
-//           border: "1px solid var(--border)",
-//         }}
-//       >
-//         {/* {msgs.map((m) => {
-//           const isMe = m.id && myId && m.id === myId;
-//           const safeText =
-//             typeof m.text === "string"
-//               ? m.text
-//               : (() => {
-//                   try {
-//                     return JSON.stringify(m.text);
-//                   } catch {
-//                     return String(m.text);
-//                   }
-//                 })();
-//           return (
-//             <div key={m.cid} style={{ marginBottom: 6 }}>
-//               <b style={{ color: isMe ? "var(--success)" : "var(--text)" }}>
-//                 {isMe ? "You" : m.name}
-//               </b>
-//               : {safeText}
-//             </div>
-//           );
-//         })} */}
-
-//         {msgs.map((m) => {
-//           const isMe = m.id && myId && m.id === myId;
-//           const safeText =
-//             typeof m.text === "string"
-//               ? m.text
-//               : (() => {
-//                   try {
-//                     return JSON.stringify(m.text);
-//                   } catch {
-//                     return String(m.text);
-//                   }
-//                 })();
-
-//           // This is the main container for alignment. It's a flexbox row.
-//           const messageRowStyle = {
-//             display: "flex",
-//             // This is the magic! Pushes content to the right if it's 'me'.
-//             justifyContent: isMe ? "flex-end" : "flex-start",
-//             marginBottom: "10px",
-//           };
-
-//           // This is the actual message bubble with distinct styles.
-//           const messageBubbleStyle = {
-//             padding: "10px 15px",
-//             borderRadius: "20px",
-//             // Set a max-width so long messages wrap nicely.
-//             maxWidth: "70%",
-//             // Different colors for me vs. them
-//             background: isMe
-//               ? "var(--primary, #007bff)"
-//               : "var(--bg-elev, #e9e9eb)",
-//             color: isMe ? "white" : "var(--text, black)",
-//           };
-
-//           return (
-//             <div key={m.cid} style={messageRowStyle}>
-//               <div style={messageBubbleStyle}>
-//                 {/* A nice touch: only show the sender's name on OTHERS' messages */}
-//                 {!isMe && (
-//                   <b
-//                     style={{
-//                       display: "block",
-//                       marginBottom: "4px",
-//                       fontSize: "0.85em",
-//                       color: "var(--text-muted, #6c757d)",
-//                     }}
-//                   >
-//                     {m.name}
-//                   </b>
-//                 )}
-//                 {safeText}
-//               </div>
-//             </div>
-//           );
-//         })}
-//       </div>
-
-//       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-//         <input
-//           ref={inputRef}
-//           className="input"
-//           value={text}
-//           onChange={(e) => setText(e.target.value)}
-//           onKeyDown={onKeyDown}
-//           placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-//           style={{ flex: 1 }}
-//         />
-//         <button className="btn btn--primary" onClick={send}>
-//           Send
-//         </button>
-//       </div>
-//     </div>
-//   );
-// }
-
 import { useEffect, useRef, useState } from "react";
-// NEW: Import an icon for the button (optional)
-import { Paperclip } from "lucide-react"; // npm install lucide-react
 
 export default function Chat({ socket, me }) {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
   const listRef = useRef(null);
   const inputRef = useRef(null);
-  // NEW: Add a ref for the hidden file input
+
+  //Add a ref for the hidden file input
   const fileInputRef = useRef(null);
   const [enlargedImage, setEnlargedImage] = useState(null);
 
@@ -250,7 +19,6 @@ export default function Chat({ socket, me }) {
   function normalizeMessage(m) {
     if (m == null) return null;
 
-    // --- NEW UNWRAPPING LOGIC ---
     // Check if the message is in the server's wrapped format.
     // The 'text' property can contain either text OR the image payload.
     if (m.from && m.text && typeof m.text === "object") {
@@ -464,7 +232,7 @@ export default function Chat({ socket, me }) {
         })}
       </div>
 
-      {/* UPDATED: Input area with upload button */}
+      {/* Input area with upload button */}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <input
           ref={inputRef}
@@ -475,7 +243,7 @@ export default function Chat({ socket, me }) {
           placeholder="Type a message…"
           style={{ flex: 1 }}
         />
-        {/* NEW: Hidden file input */}
+        {/* Hidden file input */}
         <input
           type="file"
           ref={fileInputRef}
@@ -483,9 +251,9 @@ export default function Chat({ socket, me }) {
           style={{ display: "none" }}
           accept="image/*"
         />
-        {/* NEW: Upload button */}
+        {/* Upload button */}
         <button className="btn" onClick={() => fileInputRef.current.click()}>
-          📎 {/* Or use the Paperclip icon */}
+          📎
         </button>
         <button className="btn btn--primary" onClick={send}>
           Send
@@ -506,7 +274,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 1000, // Make sure it's on top of everything
+    zIndex: 1000,
   },
   enlargedImage: {
     maxWidth: "90%",

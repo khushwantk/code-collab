@@ -22,7 +22,7 @@
     {
       "label": "start:client",
       "type": "shell",
-      "command": "npm run dev",
+      "command": "npm run dev -- --host 0.0.0.0",
       "options": {
         "cwd": "${workspaceFolder}/client"
       },

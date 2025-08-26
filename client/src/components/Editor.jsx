@@ -4,6 +4,16 @@ import { WebsocketProvider } from "y-websocket";
 import { MonacoBinding } from "y-monaco";
 import * as monaco from "monaco-editor";
 
+const USER_COLORS = [
+  "#ff6666",
+  "#66ff66",
+  "#6666ff",
+  "#ffff66",
+  "#ff66ff",
+  "#66ffff",
+];
+const getRandomColor = () =>
+  USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
 const LANGUAGES = [
   { id: "javascript", label: "JavaScript" },
   { id: "typescript", label: "TypeScript" },
@@ -16,19 +26,16 @@ const LANGUAGES = [
   { id: "markdown", label: "Markdown" },
 ];
 
-export default function Editor({ docId }) {
+export default function Editor({ docId, me }) {
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
 
-  // Editor-local (independent of app theme and other peers)
   const [language, setLanguage] = useState("javascript");
-  const [theme, setTheme] = useState("vs-dark"); // "vs" (light) | "vs-dark" (dark)
+  const [theme, setTheme] = useState("vs-dark");
 
   const isDark = theme === "vs-dark";
-
-  // Toolbar visuals keyed to editor theme (not app theme)
   const toolbarStyle = useMemo(
     () => ({
       display: "flex",
@@ -40,7 +47,6 @@ export default function Editor({ docId }) {
     }),
     [isDark]
   );
-
   const buttonStyle = useMemo(
     () => ({
       padding: "8px 12px",
@@ -53,7 +59,6 @@ export default function Editor({ docId }) {
     }),
     [isDark]
   );
-
   const selectStyle = useMemo(
     () => ({
       padding: "6px 10px",
@@ -64,13 +69,11 @@ export default function Editor({ docId }) {
     }),
     [isDark]
   );
-
-  // Helper to broadcast only (we won't apply remote theme back)
   const setAwareness = (patch) => {
     const aw = providerRef.current?.awareness;
     if (!aw) return;
-    const me = aw.getLocalState() || {};
-    aw.setLocalState({ ...me, toolbar: { ...(me.toolbar || {}), ...patch } });
+    const currentToolbarState = aw.getLocalState()?.toolbar || {};
+    aw.setLocalStateField("toolbar", { ...currentToolbarState, ...patch });
   };
 
   useEffect(() => {
@@ -81,58 +84,43 @@ export default function Editor({ docId }) {
     providerRef.current = provider;
 
     const ytext = ydoc.getText("monaco");
+    const meta = ydoc.getMap("meta"); // We will use this for language sync
 
-    const meta = ydoc.getMap("meta");
-
+    // ... (doSeedOnce function and its logic is the same)
     function doSeedOnce() {
-      // Seed only if the shared doc is genuinely empty and not already seeded
       ydoc.transact(() => {
         const alreadySeeded = meta.get("seeded") === true;
         const isEmpty = ytext.toString().length === 0;
         if (!alreadySeeded && isEmpty) {
           ytext.insert(
             0,
-            `
-  // Welcome to CodeCollab!
-  // This is a collaborative editor.
-  // Start typing below...
-
-  function hello() {
-    console.log("Hello world!");
-  }
-
-  hello();`
+            `\n  // Welcome to CodeCollab!\n  // This is a collaborative editor.\n  // Start typing below...\n\n  function hello() {\n    console.log("Hello world!");\n  }\n\n  hello();`
           );
           meta.set("seeded", true);
         }
       });
     }
 
-    // Prefer a post-sync hook if available, otherwise fall back
     if (typeof provider.whenSynced?.then === "function") {
       provider.whenSynced.then(doSeedOnce);
     } else {
-      // y-websocket classic: use the 'synced' flag/event
-      if (provider.synced) {
-        doSeedOnce();
-      } else {
-        const onSynced = (isSynced) => {
-          if (isSynced) {
-            doSeedOnce();
-            provider.off?.("synced", onSynced); // clean up if off() exists
-          }
-        };
-        provider.on?.("synced", onSynced);
-        // tiny safety net if the event API isn’t present
-        setTimeout(() => {
-          if (!meta.get("seeded")) doSeedOnce();
-        }, 800);
-      }
+      const onSynced = (isSynced) => {
+        if (isSynced) {
+          doSeedOnce();
+          provider.off?.("synced", onSynced);
+        }
+      };
+      provider.on?.("synced", onSynced);
+      setTimeout(() => {
+        if (!meta.get("seeded")) doSeedOnce();
+      }, 800);
     }
+
     const editor = monaco.editor.create(containerRef.current, {
+      // ... (editor options are the same)
       value: "",
       language,
-      theme, // editor-local theme
+      theme,
       automaticLayout: true,
       lineNumbers: "on",
       minimap: { enabled: true },
@@ -158,52 +146,73 @@ export default function Editor({ docId }) {
     );
     bindingRef.current = binding;
 
-    // Seed initial toolbar state for others to see (broadcast only)
-    provider.awareness.setLocalStateField("toolbar", { language, theme });
+    if (me) {
+      const userColor = getRandomColor();
+      provider.awareness.setLocalStateField("user", {
+        name: me.name,
+        color: userColor,
+        colorLight: "#FFFFFF",
+      });
+      console.log(
+        "✅ My Local Awareness State Set:",
+        provider.awareness.getLocalState()
+      );
+    }
 
-    // Apply ONLY language updates from others (if you want shared language)
-    const onAwarenessChange = () => {
-      const aw = provider.awareness;
-      if (!aw) return;
-      const myId = aw.clientID;
-      // Iterate remote states only
-      for (const [clientId, state] of aw.getStates()) {
-        if (clientId === myId) continue; // ignore my own state
-        const t = state?.toolbar;
-        if (!t) continue;
+    provider.awareness.on("update", () => {
+      // getStates() returns a Map of all users' awareness states
+      const states = provider.awareness.getStates();
+      console.log("📡 Awareness update received. All states:", states);
+    });
 
-        // If you want language to sync across participants, keep this:
-        if (t.language && t.language !== language) {
-          setLanguage(t.language);
-          const ed = editorRef.current;
-          if (ed) monaco.editor.setModelLanguage(ed.getModel(), t.language);
+    // Set initial toolbar state for others (non-conflicting)
+    setAwareness({ language, theme });
+
+    // Sync language using the Y.Map
+    const onMetaChange = (event) => {
+      if (event.keysChanged.has("language")) {
+        const newLang = meta.get("language");
+        if (newLang && newLang !== language) {
+          setLanguage(newLang);
         }
-
-        // IMPORTANT: do NOT apply remote theme back. We keep editor theme independent.
-        // if (t.theme && t.theme !== theme) { /* ignore */ }
       }
     };
-    provider.awareness.on("change", onAwarenessChange);
+
+    // Set initial language from shared state if it exists
+    const initialLang = meta.get("language");
+    if (initialLang) {
+      setLanguage(initialLang);
+    }
+
+    meta.observe(onMetaChange);
 
     return () => {
-      provider.awareness.off("change", onAwarenessChange);
+      meta.unobserve(onMetaChange);
+
       binding.destroy();
       editor.dispose();
       provider.destroy();
       ydoc.destroy();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
+  }, [docId, me]);
 
-  // When local language changes, apply + broadcast
+  // When local language changes, apply + BROADCAST to Y.Map
   useEffect(() => {
     const ed = editorRef.current;
     if (!ed) return;
     monaco.editor.setModelLanguage(ed.getModel(), language);
+
+    // Write the new language to the shared map
+    const meta = providerRef.current?.doc.getMap("meta");
+    if (meta) {
+      meta.set("language", language);
+    }
+
+    // Still update awareness for non-critical UI hints
     setAwareness({ language });
   }, [language]);
 
-  // When local theme changes, apply + broadcast (we DO NOT read theme from awareness)
+  // When local theme changes, apply + broadcast
   useEffect(() => {
     monaco.editor.setTheme(theme);
     setAwareness({ theme });
@@ -225,7 +234,6 @@ export default function Editor({ docId }) {
     <div
       style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100%" }}
     >
-      {/* Toolbar (follows editor theme, not app theme) */}
       <div style={toolbarStyle}>
         <select
           value={language}
@@ -239,9 +247,7 @@ export default function Editor({ docId }) {
             </option>
           ))}
         </select>
-
         <div style={{ marginLeft: "auto" }} />
-
         <button
           onClick={() => setTheme(isDark ? "vs" : "vs-dark")}
           style={buttonStyle}
@@ -249,7 +255,6 @@ export default function Editor({ docId }) {
         >
           {isDark ? "Light theme" : "Dark theme"}
         </button>
-
         <button
           onClick={downloadCode}
           style={buttonStyle}
@@ -258,13 +263,12 @@ export default function Editor({ docId }) {
           Download
         </button>
       </div>
-
-      {/* Editor canvas */}
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </div>
   );
 }
 
+// ... (extFor function is the same)
 function extFor(lang) {
   switch (lang) {
     case "javascript":

@@ -12,7 +12,7 @@ async function main() {
   await connectMongo();
 
   const app = express();
-  app.use(cors({ origin: CORS_ORIGIN }));
+  app.use(cors({ origin: "*" }));
   app.use(express.json());
   app.use("/api", roomsRouter);
 

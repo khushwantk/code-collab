@@ -1,49 +1,68 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createMediaStream, createPeer } from "../lib/webrtc.js";
 
-export default function VideoGrid({ socket }) {
+function VideoPlaceholder({ name }) {
+  const initial = name ? name.charAt(0).toUpperCase() : "?";
+  return (
+    <div
+      style={{
+        width: "100%",
+        aspectRatio: "16/9",
+        background: "#1c1c1c",
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "white",
+      }}
+    >
+      <div
+        style={{
+          width: 60,
+          height: 60,
+          borderRadius: "50%",
+          background: "#333",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "24px",
+          fontWeight: "bold",
+        }}
+      >
+        {initial}
+      </div>
+    </div>
+  );
+}
+
+export default function VideoGrid({ socket, me, participants }) {
   const [meStream, setMeStream] = useState(null);
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
-
   const [tiles, setTiles] = useState({});
-
   const peersRef = useRef(new Map());
   const meVideo = useRef(null);
-
-  // keep refs to original local tracks so we can restore on unmute
   const micTrackRef = useRef(null);
   const camTrackRef = useRef(null);
-
   useEffect(() => {
     let mounted = true;
-
     (async () => {
-      const s = await createMediaStream(); // null if blocked
+      const s = await createMediaStream();
       if (!mounted) return;
-
       if (s) {
-        // cache original local tracks
         micTrackRef.current = s.getAudioTracks()[0] || null;
         camTrackRef.current = s.getVideoTracks()[0] || null;
-
-        // 🔇 start with MIC MUTED, camera on
-        s.getAudioTracks().forEach((t) => (t.enabled = false)); // mute mic by default
-        s.getVideoTracks().forEach((t) => (t.enabled = true)); // keep cam on
-
+        s.getAudioTracks().forEach((t) => (t.enabled = false));
+        s.getVideoTracks().forEach((t) => (t.enabled = true));
         setMeStream(s);
-        setMicOn(false); // reflect muted state
-        setCamOn(!!camTrackRef.current); // true if we have a video track
-
-        // self preview
+        setMicOn(false);
+        setCamOn(!!camTrackRef.current);
         if (meVideo.current) {
           meVideo.current.srcObject = s;
-          meVideo.current.muted = true; // prevent local echo
+          meVideo.current.muted = true;
           meVideo.current.playsInline = true;
           Promise.resolve(meVideo.current.play()).catch(() => {});
         }
-
-        // broadcast initial media state
         socket.emit("media:state", {
           audio: false,
           video: !!camTrackRef.current,
@@ -54,25 +73,17 @@ export default function VideoGrid({ socket }) {
         setCamOn(false);
         socket.emit("media:state", { audio: false, video: false });
       }
-
-      // existing peers
       socket.emit("peers:list");
       socket.on("peers", (users) =>
         users.forEach((u) => ensurePeer(u.id, true, s))
       );
-
-      // newcomers
       socket.on("presence:join", (user) => {
         if (user?.id && user.id !== socket.id) ensurePeer(user.id, true, s);
       });
-
-      // signaling
       socket.on("signal", async ({ from, data }) => {
         const p = ensurePeer(from, false, s);
         await p.signal(data);
       });
-
-      // peer left
       socket.on("presence:leave", (user) => {
         if (!user?.id) return;
         const entry = peersRef.current.get(user.id);
@@ -84,8 +95,6 @@ export default function VideoGrid({ socket }) {
           return next;
         });
       });
-
-      // media badges (ignore self; don't create ghost tiles)
       socket.on("media:state", ({ from, media }) => {
         if (!from || from === socket.id) return;
         setTiles((prev) => {
@@ -94,11 +103,9 @@ export default function VideoGrid({ socket }) {
           return { ...prev, [from]: { ...cur, media } };
         });
       });
-
       function ensurePeer(remoteId, initiator, streamOrNull) {
         let entry = peersRef.current.get(remoteId);
         if (entry?.pcWrapper) return entry.pcWrapper;
-
         const pcWrapper = createPeer(
           initiator,
           (data) => socket.emit("signal", { to: remoteId, data }),
@@ -113,11 +120,7 @@ export default function VideoGrid({ socket }) {
             }));
           }
         );
-
-        // publish our local stream (if any). If null, pcWrapper.start should set up recvonly.
         pcWrapper.start(streamOrNull);
-
-        // discover senders so we can hard-mute by replacing track
         const pc = pcWrapper.pc;
         let audioSender = null;
         let videoSender = null;
@@ -125,8 +128,6 @@ export default function VideoGrid({ socket }) {
           if (s.track?.kind === "audio") audioSender = s;
           if (s.track?.kind === "video") videoSender = s;
         });
-
-        // If no local stream (recv-only), ensure we can still receive media:
         if (!audioSender && !streamOrNull) {
           try {
             pc.addTransceiver("audio", { direction: "recvonly" });
@@ -137,7 +138,6 @@ export default function VideoGrid({ socket }) {
             pc.addTransceiver("video", { direction: "recvonly" });
           } catch {}
         }
-
         peersRef.current.set(remoteId, {
           pc,
           pcWrapper,
@@ -146,8 +146,6 @@ export default function VideoGrid({ socket }) {
         });
         return pcWrapper;
       }
-
-      // cleanup
       return () => {
         mounted = false;
         socket.off("peers");
@@ -159,11 +157,8 @@ export default function VideoGrid({ socket }) {
         peersRef.current.clear();
         if (meStream) meStream.getTracks().forEach((t) => t.stop());
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     })();
-  }, []);
-
-  // keep self preview alive
+  }, [socket]);
   useEffect(() => {
     if (!meStream || !meVideo.current) return;
     if (meVideo.current.srcObject !== meStream)
@@ -173,57 +168,70 @@ export default function VideoGrid({ socket }) {
     Promise.resolve(meVideo.current.play()).catch(() => {});
   }, [meStream]);
 
-  // toggles
   async function toggleMic() {
-    if (!meStream) return;
+    if (!micTrackRef.current) return; // Can't toggle if there's no mic
     const next = !micOn;
 
-    // 1) local track UX
-    meStream.getAudioTracks().forEach((t) => (t.enabled = next));
-
-    // 2) definitively stop/start sending to peers via replaceTrack
-    const newTrack = next ? micTrackRef.current : null;
-    for (const [_, entry] of peersRef.current.entries()) {
-      if (entry.audioSender) {
-        try {
-          await entry.audioSender.replaceTrack(newTrack);
-        } catch {
-          // fallback: if replaceTrack fails, try removing/adding
-          try {
-            if (!next) {
-              entry.pc.removeTrack(entry.audioSender);
-              entry.audioSender = null;
-            } else if (micTrackRef.current) {
-              entry.audioSender = entry.pc.addTrack(
-                micTrackRef.current,
-                meStream
-              );
-            }
-          } catch {}
-        }
-      } else if (next && micTrackRef.current) {
-        // if we didn't have a sender (recv-only peer), add one now
-        try {
-          entry.audioSender = entry.pc.addTrack(micTrackRef.current, meStream);
-        } catch {}
-      }
+    // For local preview, enable/disable the track on the stream
+    if (meStream) {
+      meStream.getAudioTracks().forEach((t) => (t.enabled = next));
     }
 
+    const newTrack = next ? micTrackRef.current : null;
+    for (const [_, entry] of peersRef.current.entries()) {
+      const sender = entry.audioSender;
+      if (sender) {
+        try {
+          await sender.replaceTrack(newTrack);
+        } catch (e) {
+          console.error(e);
+        }
+      } else if (next) {
+        // If there was no sender, create one
+        try {
+          entry.audioSender = entry.pc.addTrack(micTrackRef.current, meStream);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
     setMicOn(next);
     socket.emit("media:state", { audio: next, video: camOn });
   }
 
-  function toggleCam() {
-    if (!meStream) return;
+  async function toggleCam() {
+    if (!camTrackRef.current) return; // Can't toggle if there's no camera
     const next = !camOn;
-    meStream.getVideoTracks().forEach((t) => (t.enabled = next));
+
+    // For local preview, we use React state, but we also toggle the track
+    if (meStream) {
+      meStream.getVideoTracks().forEach((t) => (t.enabled = next));
+    }
+
+    const newTrack = next ? camTrackRef.current : null;
+    for (const [_, entry] of peersRef.current.entries()) {
+      const sender = entry.videoSender;
+      if (sender) {
+        try {
+          await sender.replaceTrack(newTrack);
+        } catch (e) {
+          console.error(e);
+        }
+      } else if (next) {
+        // If there was no sender, create one
+        try {
+          entry.videoSender = entry.pc.addTrack(camTrackRef.current, meStream);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
     setCamOn(next);
     socket.emit("media:state", { audio: micOn, video: next });
   }
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      {/* Controls */}
       <div
         style={{
           display: "flex",
@@ -237,8 +245,6 @@ export default function VideoGrid({ socket }) {
           {camOn ? "Stop Video" : "Start Video"}
         </button>
       </div>
-
-      {/* Camera grid */}
       <div
         style={{
           display: "grid",
@@ -246,9 +252,8 @@ export default function VideoGrid({ socket }) {
           gap: 8,
         }}
       >
-        {/* self */}
         <div style={{ position: "relative" }}>
-          {meStream ? (
+          {meStream && camOn ? (
             <video
               ref={meVideo}
               autoPlay
@@ -262,58 +267,48 @@ export default function VideoGrid({ socket }) {
               }}
             />
           ) : (
-            <div
-              style={{
-                width: "100%",
-                aspectRatio: "16/9",
-                background: "#121212",
-                borderRadius: 8,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: "1px dashed #333",
-                fontSize: 12,
-                opacity: 0.8,
-              }}
-            >
-              Camera blocked — receive‑only
-            </div>
+            <VideoPlaceholder name={me?.name} />
           )}
           <Badge audio={micOn} video={camOn} label="You" />
         </div>
-
-        {/* peers */}
-        {Object.entries(tiles).map(([id, obj]) => (
-          <div key={id} style={{ position: "relative" }}>
-            <video
-              autoPlay
-              playsInline
-              ref={(el) => {
-                if (!el || !obj.stream) return;
-                if (el.srcObject !== obj.stream) {
-                  el.srcObject = obj.stream;
-                  el.playsInline = true;
-                  Promise.resolve(el.play()).catch(() => {});
-                }
-              }}
-              style={{
-                width: "100%",
-                background: "#000",
-                borderRadius: 8,
-                aspectRatio: "16/9",
-              }}
-            />
-            <Badge
-              audio={obj.media?.audio !== false}
-              video={obj.media?.video !== false}
-            />
-          </div>
-        ))}
+        {Object.entries(tiles).map(([id, obj]) => {
+          const peer = participants.find((p) => p.id === id);
+          const isVideoOn = obj.media?.video !== false && obj.stream;
+          return (
+            <div key={id} style={{ position: "relative" }}>
+              {isVideoOn ? (
+                <video
+                  autoPlay
+                  playsInline
+                  ref={(el) => {
+                    if (el && obj.stream && el.srcObject !== obj.stream) {
+                      el.srcObject = obj.stream;
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    background: "#000",
+                    borderRadius: 8,
+                    aspectRatio: "16/9",
+                  }}
+                />
+              ) : (
+                <VideoPlaceholder name={peer?.name} />
+              )}
+              <Badge
+                audio={obj.media?.audio !== false}
+                video={obj.media?.video !== false}
+                label={peer?.name}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+// ... (The Badge component is the same)
 function Badge({ audio, video, label }) {
   return (
     <div
@@ -325,10 +320,12 @@ function Badge({ audio, video, label }) {
         background: "rgba(0,0,0,0.6)",
         borderRadius: 6,
         fontSize: 12,
+        color: "white",
       }}
     >
-      {label ? `${label} • ` : ""}
-      {audio ? "🎙️" : "🔇"} {video ? "📹" : "🚫"}
+      {label && <span>{label} • </span>}
+      <span>{audio ? "🎙️" : "🔇"}</span>{" "}
+      <span style={{ marginLeft: 4 }}>{video ? "📹" : "🚫"}</span>
     </div>
   );
 }

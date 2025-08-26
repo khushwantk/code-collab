@@ -16,7 +16,7 @@ function broadcastRoster(io, room) {
 
 export function setupSignaling(io) {
   io.on("connection", (socket) => {
-    // 1) Get room code from query (?code=XXXXX)
+    // Get room code from query (?code=XXXXX)
     const raw = socket.handshake?.query?.code;
     const room =
       typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : undefined;
@@ -25,7 +25,7 @@ export function setupSignaling(io) {
       return socket.disconnect(true);
     }
 
-    // 2) Enforce capacity BEFORE joining
+    // Enforce capacity BEFORE joining
     const size = getRoomSockets(io, room).length;
     if (size >= ROOM_MAX_SIZE) {
       socket.emit("room_full");
@@ -34,7 +34,7 @@ export function setupSignaling(io) {
 
     socket.join(room);
 
-    // 3) Identify this user & announce
+    // Identify this user & announce
     const user = { id: socket.id, name: randomName() };
     socket.data.user = user;
 
@@ -42,18 +42,18 @@ export function setupSignaling(io) {
     io.to(room).emit("presence:join", user);
     broadcastRoster(io, room);
 
-    // 4) Peer discovery for WebRTC
+    // Peer discovery for WebRTC
     socket.on("peers:list", () => {
       const others = getUsersInRoom(io, room).filter((u) => u.id !== socket.id);
       socket.emit("peers", others);
     });
 
-    // 5) WebRTC signaling relay (target by socket id)
+    // WebRTC signaling relay (target by socket id)
     socket.on("signal", ({ to, data }) => {
       io.to(to).emit("signal", { from: socket.id, data });
     });
 
-    // 6) Media badges
+    // Media badges
     socket.on("media:state", (media) => {
       io.to(room).emit("media:state", {
         from: socket.id,
@@ -61,19 +61,15 @@ export function setupSignaling(io) {
       });
     });
 
-    // 7) Chat
+    // Chat
     socket.on("chat:send", (text) => {
       io.to(room).emit("chat:message", { from: user, text, ts: Date.now() });
     });
 
-    // 8) Roster on demand (avoid races)
+    // Roster on demand (avoid races)
     socket.on("roster:get", () => {
       socket.emit("roster", getUsersInRoom(io, room));
     });
-
-    // ------------------------------------------------------------------
-    // --- NEW: Screen Sharing Signaling ---
-    // ------------------------------------------------------------------
 
     // Announce that a user has started sharing their screen
     socket.on("screenshare:start", () => {
@@ -122,7 +118,7 @@ export function setupSignaling(io) {
       });
     });
 
-    // 9) Cleanup
+    // Cleanup
     socket.on("disconnect", async () => {
       io.to(room).emit("presence:leave", user);
       // NEW: Also announce that the disconnected user stopped their screen share
