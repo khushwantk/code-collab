@@ -19,3 +19,18 @@ CodeCollab is a full-stack collaborative coding platform. It lets multiple users
 -	Live cursors + selection highlights
 -	Persistent room history with database (MongoDB/Postgres)
 -	Authentication & user profiles
+
+
+### Demo
+
+![](Screenshots/1.png)
+![](Screenshots/2.png)
+
+Clicking any image in Chat, opens it in full screen.
+![](Screenshots/3.png)
+
+Whenever anyone is sharing his screen a seperated Active Screen Shares appears.
+<img src="Screenshots/4.png" width="600"/>
+
+Clicking the shared screen will take you to full screen view.
+<img src="Screenshots/5.png" width="600"/>
