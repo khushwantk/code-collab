@@ -29,6 +29,10 @@ CodeCollab is a full-stack collaborative coding platform. It lets multiple users
 Clicking any image in Chat, opens it in full screen.
 ![](Screenshots/3.png)
 
+Realtime cursors when multiple user are editing the file
+<img src="Screenshots/6.png" width="600"/>
+<img src="Screenshots/7.png" width="600"/>
+
 Whenever anyone is sharing his screen a seperated Active Screen Shares appears.
 <img src="Screenshots/4.png" width="600"/>
 
