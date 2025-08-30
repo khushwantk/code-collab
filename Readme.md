@@ -38,3 +38,14 @@ Whenever anyone is sharing his screen a seperated Active Screen Shares appears.
 
 Clicking the shared screen will take you to full screen view.
 <img src="Screenshots/5.png" width="600"/>
+
+
+
+
+
+### Port Checking and killing
+```bash
+sudo lsof -i :8080
+
+sudo kill -9 <PID>
+```
