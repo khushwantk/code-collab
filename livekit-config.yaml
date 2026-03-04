@@ -1,0 +1,16 @@
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # For local Docker + browser on the host:
+  # - We expose 7880/7881/7882 from the container to the host.
+  # - Advertising 127.0.0.1 makes the browser connect to host localhost,
+  #   which Docker maps to the LiveKit container ports.
+  use_external_ip: false
+  node_ip: "127.0.0.1"
+keys:
+  devkey: devsecretdevsecretdevsecret12345
+logging:
+  level: info

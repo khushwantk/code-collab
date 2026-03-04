@@ -12,12 +12,22 @@ async function main() {
   await connectMongo();
 
   const app = express();
-  app.use(cors({ origin: "*" }));
+  app.use(
+    cors({
+      origin: CORS_ORIGIN,
+      credentials: true,
+    })
+  );
   app.use(express.json());
   app.use("/api", roomsRouter);
 
   const server = http.createServer(app);
-  const io = new Server(server, { cors: { origin: true } });
+  const io = new Server(server, {
+    cors: {
+      origin: CORS_ORIGIN,
+      credentials: true,
+    },
+  });
   setupSignaling(io);
 
   server.listen(PORT, () => console.log(`API & signaling on :${PORT}`));

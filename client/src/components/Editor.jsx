@@ -2,7 +2,58 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { MonacoBinding } from "y-monaco";
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+
+// Configure Monaco to use ESM web workers under Vite.
+if (typeof window !== "undefined" && !window.MonacoEnvironment) {
+  window.MonacoEnvironment = {
+    getWorker(_moduleId, label) {
+      if (label === "json") {
+        return new Worker(
+          new URL(
+            "monaco-editor/esm/vs/language/json/json.worker?worker",
+            import.meta.url
+          ),
+          { type: "module" }
+        );
+      }
+      if (label === "css" || label === "scss" || label === "less") {
+        return new Worker(
+          new URL(
+            "monaco-editor/esm/vs/language/css/css.worker?worker",
+            import.meta.url
+          ),
+          { type: "module" }
+        );
+      }
+      if (label === "html" || label === "handlebars" || label === "razor") {
+        return new Worker(
+          new URL(
+            "monaco-editor/esm/vs/language/html/html.worker?worker",
+            import.meta.url
+          ),
+          { type: "module" }
+        );
+      }
+      if (label === "typescript" || label === "javascript") {
+        return new Worker(
+          new URL(
+            "monaco-editor/esm/vs/language/typescript/ts.worker?worker",
+            import.meta.url
+          ),
+          { type: "module" }
+        );
+      }
+      return new Worker(
+        new URL(
+          "monaco-editor/esm/vs/editor/editor.worker?worker",
+          import.meta.url
+        ),
+        { type: "module" }
+      );
+    },
+  };
+}
 
 const USER_COLORS = [
   "#ff6666",
@@ -35,8 +86,24 @@ export default function Editor({ docId, me }) {
   const userColorRef = useRef(getRandomColor());
 
   const [language, setLanguage] = useState("javascript");
-  const [theme, setTheme] = useState("vs-dark");
+  const [theme, setTheme] = useState(() => {
+    // initialize from HTML data attribute if available
+    const rootTheme = document.documentElement.getAttribute("data-theme") || "dark";
+    return rootTheme === "dark" ? "vs-dark" : "vs";
+  });
   const isDark = theme === "vs-dark";
+
+  // listen to global theme change
+  useEffect(() => {
+    const onThemeChange = (e) => {
+      const globalTheme = e.detail?.theme;
+      if (globalTheme) {
+        setTheme(globalTheme === "dark" ? "vs-dark" : "vs");
+      }
+    };
+    window.addEventListener("themechange", onThemeChange);
+    return () => window.removeEventListener("themechange", onThemeChange);
+  }, []);
 
   const toolbarStyle = useMemo(
     () => ({
@@ -128,9 +195,11 @@ export default function Editor({ docId, me }) {
   // main setup
   useEffect(() => {
     const ydoc = new Y.Doc();
-    const wsUrl =
-      (import.meta.env.VITE_YWS_URL || "ws://localhost:1234") + `/${docId}`;
-    const provider = new WebsocketProvider(wsUrl, docId, ydoc);
+    const wsBase = import.meta.env.VITE_YWS_URL || "ws://localhost:1234";
+    // y-websocket's WebsocketProvider takes a base URL and a room name.
+    // It appends `/${roomName}` internally, so we must *not* add the docId
+    // to the base URL here, otherwise we'd end up with /docId/docId.
+    const provider = new WebsocketProvider(wsBase, docId, ydoc);
     providerRef.current = provider;
 
     const ytext = ydoc.getText("monaco");

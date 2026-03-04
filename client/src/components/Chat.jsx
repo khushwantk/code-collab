@@ -103,8 +103,7 @@ export default function Chat({ socket, me }) {
     };
     try {
       socket.emit("chat:send", payload);
-      socket.emit("chat:message", payload);
-    } catch {}
+    } catch { }
     setText("");
     inputRef.current?.focus();
   }
@@ -137,8 +136,7 @@ export default function Chat({ socket, me }) {
       };
       try {
         socket.emit("chat:send", payload);
-        socket.emit("chat:message", payload);
-      } catch {}
+      } catch { }
     };
     reader.readAsDataURL(file);
   }
@@ -153,7 +151,7 @@ export default function Chat({ socket, me }) {
   const myId = socket?.id;
 
   return (
-    <div className="chat">
+    <div className="chat" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
       {enlargedImage && (
         <div style={styles.modalOverlay} onClick={() => setEnlargedImage(null)}>
           <img
@@ -167,14 +165,14 @@ export default function Chat({ socket, me }) {
 
       <div
         ref={listRef}
-        className="card"
+        className="chat-messages-container"
         style={{
           overflowY: "auto",
-          height: 220,
-          padding: 10,
-          borderRadius: 12,
-          background: "var(--bg-elev)",
-          border: "1px solid var(--border)",
+          flex: 1,
+          padding: "20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
         }}
       >
         {msgs.map((m) => {
@@ -182,16 +180,17 @@ export default function Chat({ socket, me }) {
           const messageRowStyle = {
             display: "flex",
             justifyContent: isMe ? "flex-end" : "flex-start",
-            marginBottom: "10px",
           };
           const messageBubbleStyle = {
-            padding: m.image ? "5px" : "10px 15px", // Less padding for images
-            borderRadius: "20px",
-            maxWidth: "70%",
-            background: isMe
-              ? "var(--primary, #007bff)"
-              : "var(--bg-elev, #e9e9eb)",
-            color: isMe ? "white" : "var(--text, black)",
+            padding: m.image ? "6px" : "10px 16px",
+            borderRadius: "6px",
+            borderBottomRightRadius: isMe ? "2px" : "6px",
+            borderBottomLeftRadius: isMe ? "6px" : "2px",
+            maxWidth: "75%",
+            fontSize: "14px",
+            background: isMe ? "var(--primary)" : "var(--muted)",
+            color: isMe ? "#fff" : "var(--text)",
+            boxShadow: isMe ? "0 4px 14px 0 rgba(59, 130, 246, 0.39)" : "0 2px 8px rgba(0,0,0,0.05)",
             overflow: "hidden", // Ensures image corners are rounded
           };
 
@@ -232,32 +231,33 @@ export default function Chat({ socket, me }) {
         })}
       </div>
 
-      {/* Input area with upload button */}
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <input
-          ref={inputRef}
-          className="input"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Type a message…"
-          style={{ flex: 1 }}
-        />
-        {/* Hidden file input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          style={{ display: "none" }}
-          accept="image/*"
-        />
-        {/* Upload button */}
-        <button className="btn" onClick={() => fileInputRef.current.click()}>
-          📎
-        </button>
-        <button className="btn btn--primary" onClick={send}>
-          Send
-        </button>
+      <div style={{ padding: "16px 20px", borderTop: "1px solid var(--border)", background: "var(--bg-elev)" }}>
+        <div style={{ display: "flex", gap: 10, width: "100%" }}>
+          <input
+            ref={inputRef}
+            className="input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Type a message…"
+            style={{ flex: 1 }}
+          />
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            style={{ display: "none" }}
+            accept="image/*"
+          />
+          {/* Upload button */}
+          <button className="btn btn--ghost" onClick={() => fileInputRef.current.click()}>
+            📎
+          </button>
+          <button className="btn btn--primary" onClick={send} style={{ padding: "12px 20px" }}>
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -3,8 +3,49 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
-    ports: ["27017:27017"]
+    ports: [ "27017:27017" ]
     volumes:
       - mongo_data:/data/db
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports: [ "8080:8080" ]
+    environment:
+      PORT: 8080
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: codecollab
+      CORS_ORIGIN: "http://localhost:5173"
+      LK_API_KEY: devkey
+      LK_API_SECRET: devsecretdevsecretdevsecret12345
+      LK_URL: ws://localhost:7880
+    depends_on: [ mongo, livekit ]
+
+  yjs-server:
+    build:
+      context: ./yjs-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports: [ "1234:1234" ]
+    environment:
+      PORT: 1234
+      YJS_PERSIST_DIR: /data/yjs-db
+    volumes:
+      - yjs_data:/data/yjs-db
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit-config.yaml:/etc/livekit.yaml
+
 volumes:
   mongo_data:
+  yjs_data:

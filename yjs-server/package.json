@@ -8,6 +8,7 @@
   "dependencies": {
     "@y/websocket-server": "^0.1.1",
     "ws": "^8.18.0",
+    "y-leveldb": "^0.2.0",
     "y-websocket": "^2.0.3",
     "yjs": "^13.6.18"
   }
